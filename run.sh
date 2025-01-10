@@ -24,4 +24,4 @@ export PYTHONPATH=$PYTHONPATH:/cbica/home/dadashkj/voxelmorph-sandbox
 
 
 # Start Jupyter notebook
-python train_fov.py --model gmm
+python train_fov.py --model gmm -lr 1e-6

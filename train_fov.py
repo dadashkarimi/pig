@@ -48,7 +48,7 @@ from tensorflow.keras.models import load_model
 import argparse
 
 parser = argparse.ArgumentParser(description='Process some integers.')
-parser.add_argument('-lr','--learning_rate',type=float, default=0.0001, help="learning rate")
+parser.add_argument('-lr','--learning_rate',type=float, default=0.00001, help="learning rate")
 parser.add_argument('-zb','--zero_background',type=float, default=0.2, help="zero background")
 parser.add_argument('-nc','--nb_conv_per_level',type=int, default=2, help="learning rate")
 parser.add_argument('-ie','--initial_epoch',type=int,default=0,help="initial epoch")
@@ -64,6 +64,7 @@ args = parser.parse_args()
 log_dir = 'logs'
 models_dir = 'models'
 num_epochs=param_3d.epoch_num
+lr=args.learning_rate
 
 if args.model=='gmm':
     log_dir += '_gmm'
@@ -125,7 +126,12 @@ def build_gmm_label_map(k1=5,k2=5):
                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/7665/anat",
                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/8030/anat",
                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/8031/anat",
-                   "/cbica/home/dadashkj/upenn_pigAnatomical/082"]
+                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/template"
+                   ]
+                   # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/john1",
+                   # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/john2",
+                   # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/john3",
+                   # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/john4"]
     predicted_anat_labels=[]
     for folder_path in folders_path:
         geom_data = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).geom
@@ -247,7 +253,7 @@ if __name__ == "__main__":
         segmentation = unet_model(generated_img_norm)
         combined_model = Model(inputs=input_img, outputs=segmentation)
         combined_model.add_loss(soft_dice(y, segmentation))
-        combined_model.compile(optimizer=Adam(learning_rate=0.00001))
+        combined_model.compile(optimizer=Adam(learning_rate=lr))
 
     callbacks_list = [TB_callback, weights_saver,reduce_lr]
     
