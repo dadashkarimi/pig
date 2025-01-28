@@ -126,7 +126,8 @@ def build_gmm_label_map(k1=5,k2=5):
                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/7665/anat",
                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/8030/anat",
                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/8031/anat",
-                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/template"
+                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/template",
+                    "/gpfs/fs001/cbica/home/dadashkj/upenn_pigAnatomical/template/"
                    ]
                    # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/john1",
                    # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/john2",
