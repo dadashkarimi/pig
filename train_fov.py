@@ -55,6 +55,7 @@ parser.add_argument('-ie','--initial_epoch',type=int,default=0,help="initial epo
 parser.add_argument('-sc','--scale',type=float,default=0.2,help="scale")
 parser.add_argument('-b','--batch_size',default=8,type=int,help="initial epoch")
 parser.add_argument('-m','--num_dims',default=192,type=int,help="number of dims")
+parser.add_argument('-k','--num_brain_classes',default=5,type=int,help="number of dims")
 parser.add_argument('-model', '--model', choices=['gmm','192Net'], default='192Net')
 
 
@@ -67,10 +68,13 @@ num_epochs=param_3d.epoch_num
 lr=args.learning_rate
 
 if args.model=='gmm':
-    log_dir += '_gmm'
-    models_dir += '_gmm' 
+    log_dir += '_gmm_'
+    models_dir += '_gmm_' 
 
 
+log_dir +=str(args.num_brain_classes)
+models_dir +=str(args.num_brain_classes)
+    
 reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.95, patience=20, verbose=1, min_lr=1e-7)
 
 latest_weight = max(glob.glob(os.path.join(models_dir, 'weights_epoch_*.h5')), key=os.path.getctime, default=None)
@@ -121,12 +125,14 @@ def build_gmm_label_map(k1=5,k2=5):
     from sklearn.mixture import GaussianMixture
     from scipy.ndimage import gaussian_filter
     
-    folders_path = ["/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/7646/anat",
-                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/7778/anat",
-                   "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/7665/anat",
-                   "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/8030/anat",
-                   "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/8031/anat",
-                    "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/template",
+    # folders_path = ["/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/7646/anat",
+    #                 "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/7778/anat",
+    #                "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/7665/anat",
+    #                "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/8030/anat",
+    #                "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/8031/anat",
+                        # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/template",
+
+    folders_path = [
                     "/gpfs/fs001/cbica/home/dadashkj/upenn_pigAnatomical/template/"
                    ]
                    # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/john1",
@@ -135,35 +141,75 @@ def build_gmm_label_map(k1=5,k2=5):
                    # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/john4"]
     predicted_anat_labels=[]
     for folder_path in folders_path:
+        # geom_data = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).geom
+        # pig_anat = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).reshape([param_3d.img_size_192,]*3).data
+        # pig_brain = sf.load_volume(os.path.join(folder_path, 'anat_brain.nii.gz')).reshape([param_3d.img_size_192,]*3).data
+        # pig_brain_mask = sf.load_volume(os.path.join(folder_path, 'anat_brain_mask.nii.gz')).reshape([param_3d.img_size_192,]*3).data
+    
+    
+        # pig_skull = np.copy(pig_anat)
+        # pig_skull[pig_brain_mask == 1] = 0
+        resize_size=1.3
         geom_data = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).geom
-        pig_anat = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).reshape([param_3d.img_size_192,]*3).data
-        pig_brain = sf.load_volume(os.path.join(folder_path, 'anat_brain.nii.gz')).reshape([param_3d.img_size_192,]*3).data
-        pig_brain_mask = sf.load_volume(os.path.join(folder_path, 'anat_brain_mask.nii.gz')).reshape([param_3d.img_size_192,]*3).data
-    
-    
+        pig_anat = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).resize(resize_size).reshape([param_3d.img_size_192,]*3).data
+        sigma = 1  # Adjust sigma for desired smoothing effect
+        pig_anat = gaussian_filter(pig_anat, sigma=sigma)
+        
+        pig_brain_mask = sf.load_volume(os.path.join(folder_path, 'anat_brain_mask.nii.gz')).resize(resize_size).reshape([param_3d.img_size_192,]*3).data
+        pig_brain_mask = ndi.binary_fill_holes(pig_brain_mask)
+        pig_brain = pig_anat * (pig_brain_mask == 1)
+
         pig_skull = np.copy(pig_anat)
         pig_skull[pig_brain_mask == 1] = 0
-        
-        sigma = 3  # Adjust sigma for desired smoothing effect
-        smoothed_anat = gaussian_filter(pig_anat, sigma=sigma)
+
         brain_data = pig_brain.flatten().reshape(-1, 1)
         non_brain_data = pig_skull.flatten().reshape(-1, 1)
-    
+
+        def make_smooth(label_map):
+            smoothed_labels = gaussian_filter(label_map.astype(float), sigma=1)
+            return np.round(smoothed_labels).astype(int)
+            
         # Apply GMM for brain regions (assumes 29 brain regions to be classified)
         gmm_brain = GaussianMixture(n_components=k1, random_state=42)
         gmm_brain.fit(brain_data)  # Fit GMM on the brain data
+        
+        # Apply GMM for non-brain regions (background and other tissues)
         gmm_non_brain = GaussianMixture(n_components=k2, random_state=42)  # 0 for background, 30-40 for other tissues
         gmm_non_brain.fit(non_brain_data)  # Fit GMM on the non-brain data
+        
+        # Predict the components (labels) for brain and non-brain regions
         predicted_brain_labels = gmm_brain.predict(brain_data)
         predicted_non_brain_labels = gmm_non_brain.predict(non_brain_data)
-        predicted_non_brain_labels = shift_non_zero_elements(predicted_non_brain_labels,k1)
+        
+        predicted_brain_labels = make_smooth(predicted_brain_labels)
+        predicted_non_brain_labels = make_smooth(predicted_non_brain_labels)
+        
         predicted_brain_labels = predicted_brain_labels.reshape((192,192,192))
-        predicted_non_brain_labels = predicted_non_brain_labels.numpy().reshape((192,192,192))
-        predicted_anat_labels.append(predicted_brain_labels+predicted_non_brain_labels)
+        predicted_non_brain_labels = predicted_non_brain_labels.reshape((192,192,192))
+        predicted_non_brain_labels[pig_brain_mask == 1] = 0
+        predicted_non_brain_labels = shift_non_zero_elements(predicted_non_brain_labels,6)
+        predicted_anat_label = np.where(predicted_brain_labels > 0, predicted_brain_labels, predicted_non_brain_labels)
+
+        # # Apply GMM for brain regions (assumes 29 brain regions to be classified)
+        # gmm_brain = GaussianMixture(n_components=k1, random_state=42)
+        # gmm_brain.fit(brain_data)  # Fit GMM on the brain data
+        # gmm_non_brain = GaussianMixture(n_components=k2, random_state=42)  # 0 for background, 30-40 for other tissues
+        # gmm_non_brain.fit(non_brain_data)  # Fit GMM on the non-brain data
+        
+        # predicted_brain_labels = gmm_brain.predict(brain_data)
+        # predicted_non_brain_labels = gmm_non_brain.predict(non_brain_data)
+        
+        # predicted_brain_labels = predicted_brain_labels.reshape((192,192,192))
+        # predicted_non_brain_labels = predicted_non_brain_labels.reshape((192,192,192))
+        # predicted_non_brain_labels[pig_brain_mask == 1] = 0
+        # predicted_non_brain_labels = shift_non_zero_elements(predicted_non_brain_labels,6)
+        # predicted_anat_label = np.where(predicted_brain_labels > 0, predicted_brain_labels, predicted_non_brain_labels)
+
+        predicted_anat_labels.append(predicted_anat_label)
     return predicted_anat_labels
 
 # predicted_anat_labels=build_gmm_label_map(5,5)
-pig_gmm_brain_map = build_gmm_label_map(5,5)
+pig_gmm_brain_map = build_gmm_label_map(3,5)
 config_file= "params_192.json"
 
 if args.model=="gmm":
@@ -232,16 +278,8 @@ if __name__ == "__main__":
         combined_model.compile(optimizer=Adam(learning_rate=0.00001))
     elif args.model=="gmm":
         input_img = Input(shape=(param_3d.img_size_192,param_3d.img_size_192,param_3d.img_size_192,1))
-        a = input_img[0, ...,0] 
-        fg_mask = a <6
-        fragment_brain = tf.where(fg_mask, a, 0)
-
-        # Apply the models
+        
         _, fg = model_pig(input_img[None,...,None])
-
-        bg_mask = (a > 5) | (a == 0)
-        fragment_bg = tf.where(bg_mask, a, 0)
-
         _, bg = model_shapes(input_img[None,...,None])
 
         result = fg[0,...,0] + bg[0,...,0] * tf.cast(fg[0,...,0] == 0,tf.int32)

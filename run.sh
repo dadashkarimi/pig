@@ -5,8 +5,8 @@
 #SBATCH --mem=60G
 #SBATCH --gres=gpu:a100:1
 #SBATCH --time=23:30:00         # Set expected wall time
-#SBATCH --job-name="PigSeg"
-#SBATCH --output="logs.out"
+#SBATCH --job-name="k6"
+#SBATCH --output="logs6.out"
 
 # Activate the desired Conda environment
 source ~/.bashrc  # Make sure Conda is initialized in your shell
@@ -24,4 +24,4 @@ export PYTHONPATH=$PYTHONPATH:/cbica/home/dadashkj/voxelmorph-sandbox
 
 
 # Start Jupyter notebook
-python train_fov.py --model gmm -lr 1e-6
+python train_fov.py --model gmm -lr 1e-5 -k 6
