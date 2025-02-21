@@ -55,7 +55,8 @@ parser.add_argument('-ie','--initial_epoch',type=int,default=0,help="initial epo
 parser.add_argument('-sc','--scale',type=float,default=0.2,help="scale")
 parser.add_argument('-b','--batch_size',default=8,type=int,help="initial epoch")
 parser.add_argument('-m','--num_dims',default=192,type=int,help="number of dims")
-parser.add_argument('-k','--num_brain_classes',default=5,type=int,help="number of dims")
+parser.add_argument('-k1','--num_brain_classes',default=0,type=int,help="number of dims")
+parser.add_argument('-k2','--num_anat_classes',default=5,type=int,help="number of dims")
 parser.add_argument('-model', '--model', choices=['gmm','192Net'], default='192Net')
 
 
@@ -72,8 +73,12 @@ if args.model=='gmm':
     models_dir += '_gmm_' 
 
 
-log_dir +=str(args.num_brain_classes)
-models_dir +=str(args.num_brain_classes)
+log_dir +=str(args.num_brain_classes)+"_"+str(args.num_anat_classes)
+models_dir +=str(args.num_brain_classes)+"_"+str(args.num_anat_classes)
+
+if args.num_dims!=192:
+    log_dir +="_"+str(args.num_dims)
+    models_dir +="_"+str(args.num_dims)
     
 reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.95, patience=20, verbose=1, min_lr=1e-7)
 
@@ -141,27 +146,31 @@ def build_gmm_label_map(k1=5,k2=5):
                    # "/cbica/home/dadashkj/neuroconnlab_pig_data/dwi_PigAnatomical/john4"]
     predicted_anat_labels=[]
     for folder_path in folders_path:
-        # geom_data = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).geom
-        # pig_anat = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).reshape([param_3d.img_size_192,]*3).data
-        # pig_brain = sf.load_volume(os.path.join(folder_path, 'anat_brain.nii.gz')).reshape([param_3d.img_size_192,]*3).data
-        # pig_brain_mask = sf.load_volume(os.path.join(folder_path, 'anat_brain_mask.nii.gz')).reshape([param_3d.img_size_192,]*3).data
-    
-    
-        # pig_skull = np.copy(pig_anat)
-        # pig_skull[pig_brain_mask == 1] = 0
+
         resize_size=1.3
+        from scipy.ndimage import zoom
+        
         geom_data = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).geom
-        pig_anat = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).resize(resize_size).reshape([param_3d.img_size_192,]*3).data
+        pig_seg = sf.load_volume(os.path.join(folder_path, 'fast_segmentation_seg.nii.gz')).resize(1).reshape([param_3d.img_size_256,]*3).data
+        
+        pig_anat = sf.load_volume(os.path.join(folder_path, 'anat.nii.gz')).reshape([param_3d.img_size_256,]*3).data
         sigma = 1  # Adjust sigma for desired smoothing effect
         pig_anat = gaussian_filter(pig_anat, sigma=sigma)
         
-        pig_brain_mask = sf.load_volume(os.path.join(folder_path, 'anat_brain_mask.nii.gz')).resize(resize_size).reshape([param_3d.img_size_192,]*3).data
+        pig_brain_mask = sf.load_volume(os.path.join(folder_path, 'anat_brain_mask.nii.gz')).reshape([param_3d.img_size_256,]*3).data
         pig_brain_mask = ndi.binary_fill_holes(pig_brain_mask)
         pig_brain = pig_anat * (pig_brain_mask == 1)
+        scaling_factor = 0.5
+        pig_anat = sf.Volume(zoom(pig_anat, scaling_factor, order=1)).reshape((256,)*3).data
+        pig_brain = sf.Volume(zoom(pig_brain, scaling_factor, order=1)).reshape((256,)*3).data
+        pig_brain_mask = sf.Volume(zoom(pig_brain_mask, scaling_factor, order=1)).reshape((256,)*3).data
+        pig_brain_mask = ndi.binary_fill_holes(pig_brain_mask)
+        pig_seg = sf.Volume(zoom(pig_seg, scaling_factor, order=1)).reshape((256,)*3)
 
         pig_skull = np.copy(pig_anat)
         pig_skull[pig_brain_mask == 1] = 0
-
+        sigma = 1  # Adjust sigma for desired smoothing effect
+        smoothed_anat = gaussian_filter(pig_anat, sigma=sigma)
         brain_data = pig_brain.flatten().reshape(-1, 1)
         non_brain_data = pig_skull.flatten().reshape(-1, 1)
 
@@ -179,59 +188,55 @@ def build_gmm_label_map(k1=5,k2=5):
         
         # Predict the components (labels) for brain and non-brain regions
         predicted_brain_labels = gmm_brain.predict(brain_data)
+
+        if k1==0:
+            predicted_brain_labels = pig_seg
+            
         predicted_non_brain_labels = gmm_non_brain.predict(non_brain_data)
         
         predicted_brain_labels = make_smooth(predicted_brain_labels)
         predicted_non_brain_labels = make_smooth(predicted_non_brain_labels)
         
-        predicted_brain_labels = predicted_brain_labels.reshape((192,192,192))
-        predicted_non_brain_labels = predicted_non_brain_labels.reshape((192,192,192))
+
+        predicted_brain_labels = predicted_brain_labels.reshape((256,256,256))
+        predicted_non_brain_labels = predicted_non_brain_labels.reshape((256,256,256))
+
         predicted_non_brain_labels[pig_brain_mask == 1] = 0
         predicted_non_brain_labels = shift_non_zero_elements(predicted_non_brain_labels,6)
         predicted_anat_label = np.where(predicted_brain_labels > 0, predicted_brain_labels, predicted_non_brain_labels)
 
-        # # Apply GMM for brain regions (assumes 29 brain regions to be classified)
-        # gmm_brain = GaussianMixture(n_components=k1, random_state=42)
-        # gmm_brain.fit(brain_data)  # Fit GMM on the brain data
-        # gmm_non_brain = GaussianMixture(n_components=k2, random_state=42)  # 0 for background, 30-40 for other tissues
-        # gmm_non_brain.fit(non_brain_data)  # Fit GMM on the non-brain data
-        
-        # predicted_brain_labels = gmm_brain.predict(brain_data)
-        # predicted_non_brain_labels = gmm_non_brain.predict(non_brain_data)
-        
-        # predicted_brain_labels = predicted_brain_labels.reshape((192,192,192))
-        # predicted_non_brain_labels = predicted_non_brain_labels.reshape((192,192,192))
-        # predicted_non_brain_labels[pig_brain_mask == 1] = 0
-        # predicted_non_brain_labels = shift_non_zero_elements(predicted_non_brain_labels,6)
-        # predicted_anat_label = np.where(predicted_brain_labels > 0, predicted_brain_labels, predicted_non_brain_labels)
-
-        predicted_anat_labels.append(predicted_anat_label)
+        zoomed_predicted_anat_labels = sf.Volume(predicted_anat_label).reshape([args.num_dims,]*3)
+        predicted_anat_labels.append(zoomed_predicted_anat_labels)
     return predicted_anat_labels
 
 # predicted_anat_labels=build_gmm_label_map(5,5)
 pig_gmm_brain_map = build_gmm_label_map(3,5)
 config_file= "params_192.json"
 
-if args.model=="gmm":
+if args.num_dims==param_3d.img_size_128 and args.model=="gmm":
+    print("javid is here")
+    pig_brain_map = pig_gmm_brain_map
+    config_file = "params_128.json"
+elif args.model=="gmm":
     pig_brain_map = pig_gmm_brain_map
     config_file = "params_gmm_192.json"
 
 with open(config_file, "r") as json_file:
     config = json.load(json_file)
     
-gen=generator_brain_window_Net(pig_brain_map,param_3d.img_size_192)
+gen=generator_brain_window_Net(pig_brain_map,args.num_dims)
 
 model_pig_config = config["pig_48"]
 model_shapes_config = config["shapes"]
-model_pig_config["in_shape"]=[ param_3d.img_size_192, param_3d.img_size_192, param_3d.img_size_192]
-model_shapes_config["in_shape"]=[ param_3d.img_size_192, param_3d.img_size_192, param_3d.img_size_192]
+model_pig_config["in_shape"]=[ args.num_dims, args.num_dims, args.num_dims]
+model_shapes_config["in_shape"]=[ args.num_dims, args.num_dims, args.num_dims]
 
 model3_config = config["labels_to_image_model_48"]
 model3_config["labels_out"] = {int(key): value for key, value in model3_config["labels_out"].items()}
-model3_config["in_shape"]=[ param_3d.img_size_192, param_3d.img_size_192, param_3d.img_size_192]
+model3_config["in_shape"]=[ args.num_dims, args.num_dims, args.num_dims]
 model_pig = create_model(model_pig_config)
 model_shapes = create_model(model_shapes_config)
-shapes = draw_shapes_easy(shape = (param_3d.img_size_192,)*3)   
+shapes = draw_shapes_easy(shape = (args.num_dims,)*3)   
 
 labels_to_image_model = create_model(model3_config)
 
@@ -243,7 +248,7 @@ if __name__ == "__main__":
     steps_per_epoch = 100
     min_max_norm = Lambda(lambda x: (x - K.min(x)) / (K.max(x) - K.min(x)+ epsilon) * (1.0) )
 
-    unet_model = vxm.networks.Unet(inshape=(param_3d.img_size_192,param_3d.img_size_192,param_3d.img_size_192, 1), nb_features=(en, de),
+    unet_model = vxm.networks.Unet(inshape=(args.num_dims,args.num_dims,args.num_dims, 1), nb_features=(en, de),
                    nb_conv_per_level=2,
                    final_activation_function='softmax')
     if args.model=="192Net":
@@ -276,6 +281,24 @@ if __name__ == "__main__":
         combined_model = Model(inputs=input_img, outputs=segmentation)
         combined_model.add_loss(soft_dice(y, segmentation))
         combined_model.compile(optimizer=Adam(learning_rate=0.00001))
+    elif args.model=="gmm" and args.num_dims == param_3d.img_size_128:
+        input_img = Input(shape=(param_3d.img_size_128,param_3d.img_size_128,param_3d.img_size_128,1))
+        
+        _, fg = model_pig(input_img[None,...,None])
+        _, bg = model_shapes(input_img[None,...,None])
+
+        result = fg[0,...,0] + bg[0,...,0] * tf.cast(fg[0,...,0] == 0,tf.int32)
+        result = result[None,...,None]
+
+
+        generated_img , y = labels_to_image_model(result)
+        generated_img_norm = min_max_norm(generated_img)
+        
+        segmentation = unet_model(generated_img_norm)
+        combined_model = Model(inputs=input_img, outputs=segmentation)
+        combined_model.add_loss(soft_dice(y, segmentation))
+        combined_model.compile(optimizer=Adam(learning_rate=lr))
+
     elif args.model=="gmm":
         input_img = Input(shape=(param_3d.img_size_192,param_3d.img_size_192,param_3d.img_size_192,1))
         

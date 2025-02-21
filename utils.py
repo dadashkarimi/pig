@@ -36,6 +36,9 @@ import numpy as np
 from scipy.optimize import least_squares
 from scipy.linalg import svd
 import scipy.ndimage
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 def img2array(img,dim):
      
@@ -78,6 +81,41 @@ def calib_box(result_box,result,img):
         result_box[id_][5] = img.crop((result_box[id_][0],result_box[id_][1],result_box[id_][2],result_box[id_][3]))
 
     return result_box 
+
+
+
+def visualize_image_and_mask(img_data, mask_data, slice_idx=None):
+    """
+    Visualizes a 3D image and its corresponding mask side by side.
+    
+    Parameters:
+    - img_data (numpy array): The 3D numpy array of the image data.
+    - mask_data (numpy array): The 3D numpy array of the mask data.
+    - slice_idx (int, optional): The slice index to display. If None, middle slice is used.
+    """
+    # If no slice index is provided, use the middle slice along the 3rd axis (Z-axis)
+    if slice_idx is None:
+        slice_idx = img_data.shape[2] // 2
+
+    # Create a figure with subplots for image and mask side by side
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    # Plot the image slice
+    axes[0].imshow(img_data[:, :, slice_idx], cmap='gray')
+    axes[0].set_title('Image Slice')
+    axes[0].axis('off')  # Hide axis ticks for better viewing
+
+    # Plot the mask slice
+    axes[1].imshow(mask_data[:, :, slice_idx], cmap='gray')
+    axes[1].set_title('Mask Slice')
+    axes[1].axis('off')  # Hide axis ticks for better viewing
+
+    # Display the plots
+    plt.show()
+
+# Example usage with already loaded image and mask data:
+# visualize_image_and_mask(img_data, mask_data)
+
 
 def NMS(box):
     

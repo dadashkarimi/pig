@@ -12,8 +12,9 @@ input_channel = 3
 img_size_6 = 32
 img_size_12 = 64
 img_size_24 = 96
-img_size_48 = 128
+img_size_128 = 128
 img_size_192 = 192
+img_size_256=256
 
 median_area = 20000
 min_area = 6000
@@ -28,7 +29,7 @@ resize_12=1.4
 fold_num = 10
 dim_12 = img_size_12 * img_size_12 * img_size_12 * input_channel
 dim_24 = img_size_24 * img_size_24 * img_size_24 * input_channel
-dim_48 = img_size_48 * img_size_48 * img_size_48 * input_channel
+dim_128 = img_size_128 * img_size_128 * img_size_128 * input_channel
 
 #network parameters
 b_init = 0.0
