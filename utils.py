@@ -39,6 +39,129 @@ import scipy.ndimage
 import matplotlib.pyplot as plt
 import numpy as np
 
+import pandas as pd
+import numpy as np
+import cv2
+
+def unify_pig_brain_labels(atlas_volume, csv_mapping_path):
+    """
+    Unify the labels in a pig brain atlas based on old-to-unified label mapping.
+
+    Args:
+        atlas_volume (np.ndarray): 3D numpy array representing the atlas (old labels).
+        csv_mapping_path (str): Path to the CSV file containing old and new label mappings.
+
+    Returns:
+        np.ndarray: New 3D atlas with unified labels.
+    """
+    # Load the mapping
+    df_mapping = pd.read_csv(csv_mapping_path)
+
+    # Build a dictionary: old label -> new unified label
+    mapping_dict = dict(zip(df_mapping["old"], df_mapping["new"]))
+
+    # Create a copy to hold the new labels
+    new_atlas = np.zeros_like(atlas_volume, dtype=np.int32)
+
+    # Map old labels to new labels
+    for old_label, new_label in mapping_dict.items():
+        new_atlas[atlas_volume == old_label] = new_label
+
+    return new_atlas
+
+
+
+import numpy as np
+from scipy.ndimage import gaussian_filter, binary_dilation
+from skimage.draw import ellipsoid
+from skimage.util import random_noise
+
+import numpy as np
+from scipy.ndimage import gaussian_filter, binary_dilation, binary_erosion
+from skimage.util import random_noise
+
+import numpy as np
+from scipy.ndimage import binary_dilation
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter
+from scipy.interpolate import splprep, splev
+
+import numpy as np
+from scipy.interpolate import splprep, splev
+from scipy.ndimage import gaussian_filter
+
+import numpy as np
+from scipy.interpolate import splprep, splev
+from scipy.ndimage import gaussian_filter
+
+import numpy as np
+from scipy.interpolate import splprep, splev
+from scipy.ndimage import gaussian_filter
+
+import tensorflow as tf
+import numpy as np
+from scipy.interpolate import splprep, splev
+from scipy.ndimage import gaussian_filter
+
+import tensorflow as tf
+import numpy as np
+from scipy.ndimage import gaussian_filter
+from scipy.interpolate import splprep, splev
+
+import tensorflow as tf
+import numpy as np
+from scipy.ndimage import gaussian_filter
+from scipy.interpolate import splprep, splev
+
+def load_retina_vessels_with_volume(folder_path, shape=(96, 96, 96), max_images=100):
+    """
+    Load 2D vessel PNGs, resize to fit into 3D volume, and stack them randomly without thickness or dilation.
+    """
+    files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.png')]
+    selected = random.sample(files, min(max_images, len(files)))
+
+    volume = np.zeros(shape, dtype=np.uint8)
+    depth = shape[0]
+
+    used_slices = set()
+
+    for i, path in enumerate(selected):
+        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        img_resized = cv2.resize(img, (shape[1], shape[2]))
+        binary_mask = (img_resized > 40).astype(np.uint8)
+
+        label = random.randint(1, 10) 
+
+        # Pick a random unused slice
+        possible_slices = list(set(range(depth)) - used_slices)
+        if not possible_slices:
+            break  # no more slices available
+        z_idx = random.choice(possible_slices)
+        used_slices.add(z_idx)
+
+        # Apply label only where volume is 0
+        vessel_slice = binary_mask * label
+        volume[z_idx] = np.where(volume[z_idx] == 0, vessel_slice, volume[z_idx])
+
+    return tf.convert_to_tensor(volume, dtype=tf.int32)
+
+
+
+def fill_holes_per_class(mask, labels=None):
+    filled_mask = np.zeros_like(mask)
+    if labels is None:
+        labels = np.unique(mask)
+        labels = labels[labels != 0]  # skip background
+
+    for label in labels:
+        class_mask = (mask == label)
+        filled_class = ndi.binary_fill_holes(class_mask)
+        filled_mask[filled_class] = label
+
+    return filled_mask
+
 
 def img2array(img,dim):
      
@@ -253,39 +376,152 @@ def load_validation_data(validation_folder_path,dim_):
         image_mask_pairs.append((crop_data,mask.data))
     return image_mask_pairs
 
-def load_validation_data_one_hot(validation_folder_path,dim_):
-    subfolders = [f.name for f in os.scandir(validation_folder_path) if f.is_dir()]
+def load_validation_data_one_hot(folders_path, dim_):
     image_mask_pairs = []
 
-    for folder in subfolders:
-        folder_path = os.path.join(validation_folder_path, folder)
-        filename = os.path.join(folder_path, "image.nii.gz") if os.path.exists(os.path.join(folder_path, "image.nii.gz")) else os.path.join(folder_path, "image.mgz")
-        mask_filename = os.path.join(folder_path,"manual.nii.gz")
-        image = sf.load_volume(filename)
-        new_voxsize = [dynamic_resize(image)]*3
+    for folder_path in folders_path:
+        # Determine image file path (.nii.gz or .mgz)
+        if os.path.exists(os.path.join(folder_path, "anat.nii.gz")):
+            image_path = os.path.join(folder_path, "anat.nii.gz")
+        else:
+            image_path = os.path.join(folder_path, "anat.nii")
+
+        mask_path = os.path.join(folder_path, "anat_brain_olfactory_mask.nii.gz")
+
+        # Load and resize image
+        image = sf.load_volume(image_path)
+        orig_voxsize = image.geom.voxsize
+        new_voxsize = [dynamic_resize(image)] * 3
+
+        image = image.resize([orig_voxsize[0], orig_voxsize[1], 1], method="linear")
+        image = image.resize(new_voxsize).reshape([dim_, dim_, dim_, 1])
+
+        # Load and resize mask
+        mask = sf.load_volume(mask_path)
+        mask = mask.resize([orig_voxsize[0], orig_voxsize[1], 1], method="linear")
+        mask = mask.resize(new_voxsize).reshape([dim_, dim_, dim_, 1])
+        mask.data[mask.data != 0] = 1  # binarize
+
+        # Get bounding box and crop both image and mask
+        x1, y1, z1, x2, y2, z2 = find_bounding_box(mask, cube_size=dim_)
+        print(f"Bounding box: {x1}, {y1}, {z1}, {x2}, {y2}, {z2}")
+
+        crop_img = extract_cube(image.data, x1, y1, z1, x2, y2, z2)
+        crop_img = crop_img[..., None]  # shape: (dim_, dim_, dim_, 1)
+
+        crop_mask = extract_cube(mask.data, x1, y1, z1, x2, y2, z2)
+        crop_mask = tf.one_hot(crop_mask.astype(np.uint8), depth=2)  # shape: (dim_, dim_, dim_, 2)
+        crop_mask = tf.squeeze(crop_mask)  # squeeze extra dim
+
+        image_mask_pairs.append((crop_img.astype(np.float32), crop_mask.numpy().astype(np.float32)))
+
+    return image_mask_pairs
+
+import numpy as np
+import tensorflow as tf
+from scipy.ndimage import rotate, shift
+
+import numpy as np
+from scipy.ndimage import rotate, shift
+
+import tensorflow as tf
+
+def augment_3d(image, mask):
+    """
+    Applies fast GPU-friendly 3D augmentations using TensorFlow.
+    image: tf.Tensor, shape (D, H, W, 1)
+    mask: tf.Tensor, shape (D, H, W, C) with one-hot
+    Returns:
+        Augmented image and mask
+    """
+
+    # Random flip (axes: 0=z, 1=y, 2=x)
+    for axis in [0, 1, 2]:
+        if tf.random.uniform([]) < 0.5:
+            image = tf.reverse(image, axis=[axis])
+            mask = tf.reverse(mask, axis=[axis])
+
+    # Brightness adjustment
+    if tf.random.uniform([]) < 0.5:
+        brightness_factor = tf.random.uniform([], 0.7, 1.3)
+        image = tf.clip_by_value(image * brightness_factor, 0.0, 1.0)
+
+    # Gaussian noise
+    if tf.random.uniform([]) < 0.5:
+        noise = tf.random.normal(tf.shape(image), mean=0.0, stddev=0.05, dtype=tf.float32)
+        image = tf.clip_by_value(image + noise, 0.0, 1.0)
+
+    # Integer voxel shifts (up to ±4)
+    for axis in [0, 1, 2]:
+        shift_val = tf.random.uniform([], -4, 4, dtype=tf.int32)
+        image = tf.roll(image, shift=shift_val, axis=axis)
+        mask = tf.roll(mask, shift=shift_val, axis=axis)
+
+    return image, mask
+
+
+
+def generator_from_pairs(image_mask_pairs):
+    while True:
+        img, mask = random.choice(image_mask_pairs)
+
+        # Convert to TensorFlow tensors
+        img_tf = tf.convert_to_tensor(img, dtype=tf.float32)
+        mask_tf = tf.convert_to_tensor(mask, dtype=tf.float32)
+
+        # Apply GPU-friendly augmentations
+        img_aug, mask_aug = augment_3d(img_tf, mask_tf)
+
+        # Convert back to numpy (eager tensors → NumPy arrays)
+        yield img_aug[None, ...].numpy(), mask_aug[None, ...].numpy()
+
+
+# def generator_from_pairs(image_mask_pairs):
+#     while True:
+#         img, mask = random.choice(image_mask_pairs)  # ✅ use this instead of np.random.choice
+#         img_aug, mask_aug = augment_3d(img, mask)
+#         yield img_aug[None, ...], mask_aug[None, ...]
+
+
+# def generator_from_pairs(image_mask_pairs):
+#     rand = np.random.default_rng()
+#     while True:
+#         img, mask = rand.choice(image_mask_pairs)
+#         yield img[None, ...], mask[None, ...]  # Add batch dim: (1, D, D, D, 1), (1, D, D, D, C)
+
+# def load_validation_data_one_hot(validation_folder_path,dim_):
+#     subfolders = [f.name for f in os.scandir(validation_folder_path) if f.is_dir()]
+#     image_mask_pairs = []
+
+#     for folder in subfolders:
+#         folder_path = os.path.join(validation_folder_path, folder)
+#         filename = os.path.join(folder_path, "image.nii.gz") if os.path.exists(os.path.join(folder_path, "image.nii.gz")) else os.path.join(folder_path, "image.mgz")
+#         mask_filename = os.path.join(folder_path,"manual.nii.gz")
+#         image = sf.load_volume(filename)
+#         new_voxsize = [dynamic_resize(image)]*3
     
         
-        orig_voxsize = image.geom.voxsize
-        image = image.resize([orig_voxsize[0], orig_voxsize[1], 1], method="linear")
-        image = image.resize(new_voxsize).reshape([192, 192, 192, 1])
+#         orig_voxsize = image.geom.voxsize
+#         image = image.resize([orig_voxsize[0], orig_voxsize[1], 1], method="linear")
+#         image = image.resize(new_voxsize).reshape([192, 192, 192, 1])
 
     
-        mask = sf.load_volume(mask_filename).resize([orig_voxsize[0], orig_voxsize[1], 1], method="linear")
-        mask = mask.resize(new_voxsize).reshape([192, 192, 192, 1])
-        mask.data[mask.data != 0] = 1
+#         mask = sf.load_volume(mask_filename).resize([orig_voxsize[0], orig_voxsize[1], 1], method="linear")
+#         mask = mask.resize(new_voxsize).reshape([192, 192, 192, 1])
+#         mask.data[mask.data != 0] = 1
     
-        x1, y1, z1, x2, y2, z2 = find_bounding_box(mask,cube_size=dim_)
-        print(x1,y1,z1,x2,y2,z2)
-        crop_img = extract_cube(image.data,x1, y1, z1, x2, y2, z2)
-        crop_img = image.resize([orig_voxsize[0],orig_voxsize[1],1], method="linear")
-        crop_img = crop_img.resize(new_voxsize, method="linear").reshape([dim_, dim_, dim_])
-        mask = extract_cube(mask.data, x1, y1, z1, x2, y2, z2, cube_size=dim_)
+#         x1, y1, z1, x2, y2, z2 = find_bounding_box(mask,cube_size=dim_)
+#         print(x1,y1,z1,x2,y2,z2)
+#         crop_img = extract_cube(image.data,x1, y1, z1, x2, y2, z2)
+#         crop_img = image.resize([orig_voxsize[0],orig_voxsize[1],1], method="linear")
+#         crop_img = crop_img.resize(new_voxsize, method="linear").reshape([dim_, dim_, dim_])
+#         mask = extract_cube(mask.data, x1, y1, z1, x2, y2, z2, cube_size=dim_)
         
-        mask = tf.one_hot(mask,depth=2)
-        image_mask_pairs.append((crop_img,mask))
+#         mask = tf.one_hot(mask,depth=2)
+#         image_mask_pairs.append((crop_img,mask))
     
         
-    return image_mask_pairs
+#     return image_mask_pairs
  
                 
 def generator_brain_window_Net(label_maps,img_size):
@@ -1066,6 +1302,18 @@ def create_window_model(positions, window_size, model_config):
 
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
+
+def mask_bg_near_fg(fg, bg, dilation_iter=8):
+    d_iter = tf.random.uniform([], minval=1, maxval=dilation_iter + 1, dtype=tf.int32)
+    k = 2 * d_iter + 1
+    fg_mask = tf.cast(fg[0, ..., 0] > 0, tf.float32)
+    fg_mask = tf.reshape(fg_mask, [1, *fg_mask.shape, 1])
+    fg_mask = tf.nn.max_pool3d(fg_mask, ksize=[1, k, k, k, 1], strides=[1, 1, 1, 1, 1], padding='SAME')
+    fg_mask = tf.squeeze(fg_mask > 0)
+
+    bg_masked = tf.where(fg_mask, bg[0, ..., 0], tf.zeros_like(bg[0, ..., 0]))
+    result = tf.where(fg[0, ..., 0] > 0, fg[0, ..., 0], bg_masked)
+    return result
 
 
 import numpy as np
@@ -3407,3 +3655,116 @@ def consensus_based_combination(pred_list, weights, center_weight=1.0, boundary_
     combined = sum(mask * weight * weight_mask for mask, weight in zip(normalized_masks, weights))
     consensus_mask = np.sum(np.array(normalized_masks) > 0, axis=0) >= 2
     return np.where(consensus_mask, combined, 0)
+
+
+
+
+def refine_prediction1(crop_img, mask, model, model_128, folder, new_image_size=(192, 192, 192), margin=0, cube_size=128):
+    """
+    Refines the segmentation prediction in two steps:
+    1. Makes an initial prediction.
+    2. Crops the image based on the prediction and runs the model again.
+    
+    Parameters:
+    - crop_img (ndarray): The input image for prediction.
+    - mask (ndarray): The binary mask.
+    - model: The trained segmentation model.
+    - new_image_size (tuple): The new voxel size for resizing (default is (192, 192, 192)).
+    - margin (int): The margin to add around the bounding box (default is 10).
+    - cube_size (int): The size of the bounding cube (default is 32).
+    
+    Returns:
+    - final_prediction_resized (ndarray): The final refined prediction, resized to match the original input size.
+    """
+    folder_path = os.path.join("results", folder)
+    os.makedirs(folder_path, exist_ok=True)
+    nib.save(nib.Nifti1Image(crop_img, np.eye(4)), os.path.join(folder_path, 'image.nii.gz'))
+
+    # Step 1: Initial Prediction
+    # Binarize the mask
+    mask.data[mask.data != 0] = 1
+    nib.save(nib.Nifti1Image(mask.astype(np.int32), np.eye(4)), os.path.join(folder_path, 'mask.nii.gz'))
+
+    # Compute mask center (using the provided find_bounding_box function)
+    ms = np.mean(np.column_stack(np.nonzero(mask)), axis=0).astype(int)
+    print(crop_img.shape)
+    
+    # Make an initial prediction
+    prediction_one_hot = model.predict(crop_img[None, ...], verbose=0)
+    initial_prediction = np.argmax(prediction_one_hot, axis=-1)[0]
+    ne.plot.volume3D(crop_img, slice_nos=ms)
+    print("Initial Prediction Result:")
+
+    labeled, num_components = ndimage.label(initial_prediction > 0)
+    largest_mask = labeled == np.argmax(ndimage.sum(initial_prediction > 0, labeled, range(num_components + 1)))
+    initial_prediction = ndi.binary_fill_holes(largest_mask)
+    nib.save(nib.Nifti1Image(initial_prediction.astype(np.int32), np.eye(4)), os.path.join(folder_path, 'initial_prediction.nii.gz'))
+
+    ne.plot.volume3D(initial_prediction, slice_nos=ms)
+    print("first step: ",my_hard_dice(mask.data, initial_prediction))
+
+    # Step 2: Use find_bounding_box function to get the bounding box
+    x1, y1, z1, x2, y2, z2 = find_bounding_box(initial_prediction, cube_size=cube_size)
+    cube = extract_cube(crop_img, x1, y1, z1, x2, y2, z2, cube_size=128)
+
+
+    pred_192 = np.zeros((192,192,192))
+
+    ms = np.mean(np.column_stack(np.nonzero(mask)), axis=0).astype(int)
+    ne.plot.volume3D(cube, slice_nos=ms)
+
+    # Step 3: Re-run the Model with the cropped image
+    prediction_cropped_one_hot = model_128.predict(cube[None, ...], verbose=0)
+    final_prediction = np.argmax(prediction_cropped_one_hot, axis=-1)[0]
+    pred_192[x1:x2, y1:y2, z1:z2] = final_prediction
+    pred_192[pred_192==1]=1
+    
+    labeled, num_components = ndimage.label(pred_192 > 0)
+    largest_mask = labeled == np.argmax(ndimage.sum(pred_192 > 0, labeled, range(num_components + 1)))
+    largest_mask = ndi.binary_fill_holes(largest_mask)
+    pred_192 = largest_mask
+    ne.plot.volume3D(pred_192, slice_nos=ms)
+    print("second step: ",my_hard_dice(mask.data, pred_192))
+    # Step 4: Resize the final prediction to the original crop_img size
+    # final_prediction_resized = np.resize(final_prediction, (192, 192, 192))
+    nib.save(nib.Nifti1Image(pred_192.astype(np.int32), np.eye(4)), os.path.join(folder_path, 'second_prediction.nii.gz'))
+    return pred_192
+
+def visualize_tensors(tensors, col_wrap=8, col_names=None, title=None):
+    M = len(tensors)
+    N = len(next(iter(tensors.values())))
+
+    cols = col_wrap
+    rows = math.ceil(N/cols) * M
+
+    d = 2.5
+    fig, axes = plt.subplots(rows, cols, figsize=(d*cols, d*rows))
+    if rows == 1:
+      axes = axes.reshape(1, cols)
+
+    for g, (grp, tensors) in enumerate(tensors.items()):
+        for k, tensor in enumerate(tensors):
+            col = k % cols
+            row = g + M*(k//cols)
+            x = tensor.detach().cpu().numpy().squeeze()
+            ax = axes[row,col]
+            if len(x.shape) == 2:
+                ax.imshow(x,vmin=0, vmax=1, cmap='gray')
+            else:
+                ax.imshow(E.rearrange(x,'C H W -> H W C'))
+            if col == 0:
+                ax.set_ylabel(grp, fontsize=16)
+            if col_names is not None and row == 0:
+                ax.set_title(col_names[col])
+
+    for i in range(rows):
+        for j in range(cols):
+            ax = axes[i,j]
+            ax.grid(False)
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+    if title:
+        plt.suptitle(title, fontsize=20)
+
+    plt.tight_layout()

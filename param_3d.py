@@ -12,6 +12,7 @@ input_channel = 3
 img_size_6 = 32
 img_size_12 = 64
 img_size_24 = 96
+img_size_96 = 96
 img_size_128 = 128
 img_size_192 = 192
 img_size_256=256

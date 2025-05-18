@@ -11,6 +11,7 @@ export PYTHONPATH=$PYTHONPATH:/cbica/home/dadashkj/neurite
 export PYTHONPATH=$PYTHONPATH:/cbica/home/dadashkj/voxelmorph
 export PYTHONPATH=$PYTHONPATH:/cbica/home/dadashkj/neurite-sandbox
 export PYTHONPATH=$PYTHONPATH:/cbica/home/dadashkj/voxelmorph-sandbox
+export PYTHONPATH=$PYTHONPATH:/cbica/home/dadashkj/UniverSeg
 
 
 
