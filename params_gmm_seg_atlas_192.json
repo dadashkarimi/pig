@@ -1,0 +1,54 @@
+{
+  "labels_to_image_model_48": {
+    "in_shape": [192, 192, 192],
+    "aff_shift": 5,
+    "aff_scale": 0.01,
+    "bias_max": 0.05, 
+    "blur_max": 0.2,
+    "aff_rotate": 180,
+    "warp_max": 0.1,
+    "crop_prob": 0.0,
+    "slice_prob": 0,
+    "noise_min": 0.0,
+    "noise_max": 0.1,
+    "zero_background": 0.9,
+    "normalize": true
+  },
+    "pig_48": {
+        "in_shape": [192, 192, 192],
+        "aff_shift":0,
+        "one_hot": false,
+        "aff_rotate": 90,
+        "warp_max": 0.3,
+        "crop_prob": 0.0,
+        "aff_scale": 0.1,
+        "aff_shear":0.00,
+        "noise_min": 0.0,
+        "noise_max": 0.1
+  },
+    "shapes": {
+        "in_shape": [192, 192, 192],
+        "one_hot": false,
+        "aff_shift":0,
+        "warp_max": 0.2,
+        "aff_scale": 0.1,
+        "crop_prob": 0.6,
+        "aff_scale": 0.1,
+        "aff_shear":0.00,
+        "noise_min": 0.0,
+        "noise_max": 0.1
+  },
+    "veins": {
+        "in_shape": [192, 192, 192],
+        "labels_in": [0,7, 8, 9, 10, 11,12,13,14,15,16,17],
+        "one_hot": false,
+        "aff_shift":90,
+        "aff_rotate": 90,
+        "warp_max": 2,
+        "aff_scale": 1,
+        "crop_prob": 1,
+        "aff_shear":1,
+        "noise_min": 0.0,
+        "noise_max": 0.1
+  }
+}

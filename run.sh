@@ -3,11 +3,11 @@
 #SBATCH --ntasks=1              # Number of tasks
 #SBATCH --cpus-per-gpu=1
 #SBATCH --mem=80G
-#SBATCH --partition=ai
+#SBATCH --partition=ailong
 #SBATCH --gres=gpu:a100:1
 #SBATCH --time=10:30:00         # Set expected wall time
-#SBATCH --job-name="run_128"
-#SBATCH --output="logs_128.out"
+#SBATCH --job-name="run_192"
+#SBATCH --output="logs_192.out"
 
 # Get k1 and k2 from command line arguments
 
@@ -28,7 +28,9 @@ export PYTHONPATH=$PYTHONPATH:/cbica/home/dadashkj/voxelmorph-sandbox
 #python train_fov.py --model gmm --num_dims 96 --olfactory -lr 1e-6 -k1 $k1 -k2 $k2
 #python train_seg_atlas.py --new_labels --model gmm --num_dims 192 -lr 1e-6
 #python train_seg_atlas.py --model gmm --num_dims 96 -lr 1e-6
-python train_fov.py --model gmm --num_dims 128 -lr 1e-6
+#python train_fov.py --model gmm --num_dims 128 -lr 1e-6
+#python train_fov.py --model hmrf --num_dims 128 -lr 1e-6
+python train_fov.py --model hmrf --num_dims 192 -lr 1e-6
 #python train_fov.py --model gmm --num_dims 128 --use_original -lr 1e-5
 #python train_seg.py --model gmm --num_dims 128 -lr 1e-6
 

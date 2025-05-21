@@ -2,9 +2,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1              # Number of tasks
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=50G
-#SBATCH --gres=gpu:a100:1
-#SBATCH --time=1:00:00         # Set expected wall time
+#SBATCH --mem=80G
+#SBATCH --partition=all
+#SBATCH --gres=gpu:v100:1
+#SBATCH --time=10:00:00         # Set expected wall time
 #SBATCH --job-name="eval"
 #SBATCH --output="eval.out"
 
